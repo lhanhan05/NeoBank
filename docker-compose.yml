@@ -1,0 +1,68 @@
+services:
+  dmz-gw:
+    image: ${PROBE_IMAGE}
+    container_name: neobank-dmz-gw
+    command: ["sh", "-c", "python -m http.server 80"]
+    networks:
+      - dmz-net
+      - core-net
+
+  corp-agent:
+    image: ${PROBE_IMAGE}
+    container_name: neobank-corp-agent
+    command: ["sh", "-c", "python -m http.server 80"]
+    networks:
+      - corp-net
+      - core-net
+
+  core-svc:
+    image: ${PROBE_IMAGE}
+    container_name: neobank-core-svc
+    command: ["sh", "-c", "python -m http.server 80"]
+    networks:
+      - core-net
+      - pci-net
+      - db-net
+
+  pci-svc:
+    image: ${PROBE_IMAGE}
+    container_name: neobank-pci-svc
+    command: ["sh", "-c", "python -m http.server 80"]
+    networks:
+      - pci-net
+      - db-net
+
+  core-db-probe:
+    image: ${PROBE_IMAGE}
+    container_name: neobank-core-db-probe
+    command: ["sh", "-c", "python -m http.server 80"]
+    networks:
+      - db-net
+
+  pci-db-probe:
+    image: ${PROBE_IMAGE}
+    container_name: neobank-pci-db-probe
+    command: ["sh", "-c", "python -m http.server 80"]
+    networks:
+      - db-net
+
+networks:
+  dmz-net:
+    name: ${DMZ_NET}
+    driver: bridge
+
+  corp-net:
+    name: ${CORP_NET}
+    driver: bridge
+
+  core-net:
+    name: ${CORE_NET}
+    driver: bridge
+
+  pci-net:
+    name: ${PCI_NET}
+    driver: bridge
+
+  db-net:
+    name: ${DB_NET}
+    driver: bridge
