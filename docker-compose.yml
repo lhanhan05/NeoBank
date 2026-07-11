@@ -22,7 +22,7 @@ services:
     networks:
       - core-net
       - pci-net
-      - db-net
+      - core-db-net
 
   pci-svc:
     image: ${PROBE_IMAGE}
@@ -30,21 +30,43 @@ services:
     command: ["sh", "-c", "python -m http.server 80"]
     networks:
       - pci-net
-      - db-net
+      - pci-db-net
 
-  core-db-probe:
-    image: ${PROBE_IMAGE}
-    container_name: neobank-core-db-probe
-    command: ["sh", "-c", "python -m http.server 80"]
+  core-db:
+    image: ${POSTGRES_IMAGE}
+    container_name: neobank-core-db
+    environment:
+      POSTGRES_DB: ${CORE_DB_NAME}
+      POSTGRES_USER: ${CORE_DB_USER}
+      POSTGRES_PASSWORD: ${CORE_DB_PASSWORD}
     networks:
-      - db-net
+      - core-db-net
+    volumes:
+      - core-db-data:/var/lib/postgresql/data
+      - ./db/core/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CORE_DB_USER} -d ${CORE_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  pci-db-probe:
-    image: ${PROBE_IMAGE}
-    container_name: neobank-pci-db-probe
-    command: ["sh", "-c", "python -m http.server 80"]
+  pci-db:
+    image: ${POSTGRES_IMAGE}
+    container_name: neobank-pci-db
+    environment:
+      POSTGRES_DB: ${PCI_DB_NAME}
+      POSTGRES_USER: ${PCI_DB_USER}
+      POSTGRES_PASSWORD: ${PCI_DB_PASSWORD}
     networks:
-      - db-net
+      - pci-db-net
+    volumes:
+      - pci-db-data:/var/lib/postgresql/data
+      - ./db/pci/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PCI_DB_USER} -d ${PCI_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   dmz-net:
@@ -63,6 +85,14 @@ networks:
     name: ${PCI_NET}
     driver: bridge
 
-  db-net:
-    name: ${DB_NET}
+  core-db-net:
+    name: ${CORE_DB_NET}
     driver: bridge
+
+  pci-db-net:
+    name: ${PCI_DB_NET}
+    driver: bridge
+
+volumes:
+  core-db-data:
+  pci-db-data:

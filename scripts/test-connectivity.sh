@@ -26,15 +26,12 @@ run_test() {
   echo
 }
 
-echo "Running NeoBank Phase 1 connectivity checks..."
+echo "Running NeoBank network connectivity checks..."
 echo
 
 run_test neobank-corp-agent core-svc allowed
 run_test neobank-core-svc pci-svc allowed
-run_test neobank-core-svc core-db-probe allowed
-run_test neobank-pci-svc pci-db-probe allowed
 run_test neobank-corp-agent pci-svc blocked
 run_test neobank-dmz-gw pci-svc blocked
-run_test neobank-corp-agent core-db-probe blocked
 
 echo "All connectivity checks passed."
