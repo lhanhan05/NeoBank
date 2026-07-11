@@ -110,6 +110,35 @@ Seeds the PCI database with fake but realistic card records, including:
 ### `scripts/test-connectivity.sh`
 Runs a small set of network checks to confirm that expected paths are allowed and forbidden paths are blocked.
 
+### `scripts/test-pci-service.sh`
+Runs endpoint-level checks for the PCI authorization service:
+- health check
+- active card approval
+- expired card decline
+- frozen card decline
+- unknown token decline
+
+### `scripts/test-core-service.sh`
+Runs endpoint-level checks for the Core service:
+- health check
+- approved Core -> PCI payment flow
+- expired-card decline
+- frozen-account decline
+- missing-account decline
+
+### `scripts/test-dmz-gateway.sh`
+Runs endpoint-level checks for the DMZ gateway:
+- health check
+- approved public-edge payment flow
+- public-edge decline paths for expired card, frozen account, and missing account
+
+### `scripts/test-corporate-service.sh`
+Runs endpoint-level checks for the Corporate support service:
+- health check
+- list tickets
+- fetch known seeded malicious ticket
+- verify missing-ticket 404 behavior
+
 ### `services/pci-auth-svc/`
 Contains the first PCI-side application service.
 
@@ -125,6 +154,52 @@ This service is intended to:
 - log authorization outcomes
 
 The main Docker Compose file now uses this service code to power the `pci-svc` runtime role in the overall topology.
+
+### `services/core-svc/`
+Contains the first Core-side application service.
+
+Current files:
+- `app.py`
+- `requirements.txt`
+- `Dockerfile`
+
+This service is intended to:
+- receive an account-based payment authorization request
+- look up Core account state
+- call the PCI service
+- write approved transaction rows into the Core database
+
+The main Docker Compose file now uses this service code to power the `core-svc` runtime role in the overall topology.
+
+### `services/dmz-gw/`
+Contains the first DMZ gateway implementation.
+
+Current files:
+- `app.py`
+- `requirements.txt`
+- `Dockerfile`
+
+This service is intended to:
+- expose the public payment endpoint
+- forward allowed requests into `core-svc`
+- stay thin and avoid holding business logic directly
+
+The main Docker Compose file now uses this service code to power the `dmz-gw` runtime role in the overall topology.
+
+### `services/corp-agent/`
+Contains the first Corporate-zone support service.
+
+Current files:
+- `app.py`
+- `requirements.txt`
+- `Dockerfile`
+
+This first version is intentionally read-only and is intended to:
+- expose support tickets from the Core database
+- prove the Corporate -> Core data path works
+- prepare the ground for later support tools and agent behavior
+
+The main Docker Compose file now uses this service code to power the `corp-agent` runtime role in the overall topology.
 
 ## Prerequisites
 
@@ -204,6 +279,9 @@ The current stack has been validated with:
 - `./scripts/test-connectivity.sh`
 - direct database reachability checks from the intended service containers
 - direct verification that both databases loaded their schema and seed rows successfully
+- live PCI authorization checks through `pci-svc`
+- live Core-to-PCI payment flow through `core-svc`
+- live DMZ-to-Core-to-PCI payment flow through `dmz-gw`
 
 ## Next development areas
 

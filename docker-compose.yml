@@ -1,28 +1,61 @@
 services:
   dmz-gw:
-    image: ${PROBE_IMAGE}
+    build:
+      context: ./services/dmz-gw
     container_name: neobank-dmz-gw
-    command: ["sh", "-c", "python -m http.server 80"]
+    environment:
+      CORE_BASE_URL: http://core-svc:8000
     networks:
       - dmz-net
       - core-net
+    depends_on:
+      core-svc:
+        condition: service_started
+    ports:
+      - "8000:8000"
 
   corp-agent:
-    image: ${PROBE_IMAGE}
+    build:
+      context: ./services/corp-agent
     container_name: neobank-corp-agent
-    command: ["sh", "-c", "python -m http.server 80"]
+    environment:
+      CORE_DB_HOST: core-db
+      CORE_DB_PORT: "5432"
+      CORE_DB_NAME: ${CORE_DB_NAME}
+      CORE_DB_USER: ${CORE_DB_USER}
+      CORE_DB_PASSWORD: ${CORE_DB_PASSWORD}
     networks:
       - corp-net
       - core-net
+      - core-db-net
+    depends_on:
+      core-db:
+        condition: service_healthy
+    ports:
+      - "8003:8000"
 
   core-svc:
-    image: ${PROBE_IMAGE}
+    build:
+      context: ./services/core-svc
     container_name: neobank-core-svc
-    command: ["sh", "-c", "python -m http.server 80"]
+    environment:
+      CORE_DB_HOST: core-db
+      CORE_DB_PORT: "5432"
+      CORE_DB_NAME: ${CORE_DB_NAME}
+      CORE_DB_USER: ${CORE_DB_USER}
+      CORE_DB_PASSWORD: ${CORE_DB_PASSWORD}
+      PCI_AUTH_BASE_URL: http://pci-svc:8000
     networks:
       - core-net
       - pci-net
       - core-db-net
+    depends_on:
+      core-db:
+        condition: service_healthy
+      pci-svc:
+        condition: service_started
+    ports:
+      - "8002:8000"
 
   pci-svc:
     build:
