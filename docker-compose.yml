@@ -25,12 +25,23 @@ services:
       - core-db-net
 
   pci-svc:
-    image: ${PROBE_IMAGE}
+    build:
+      context: ./services/pci-auth-svc
     container_name: neobank-pci-svc
-    command: ["sh", "-c", "python -m http.server 80"]
+    environment:
+      PCI_DB_HOST: pci-db
+      PCI_DB_PORT: "5432"
+      PCI_DB_NAME: ${PCI_DB_NAME}
+      PCI_DB_USER: ${PCI_DB_USER}
+      PCI_DB_PASSWORD: ${PCI_DB_PASSWORD}
     networks:
       - pci-net
       - pci-db-net
+    depends_on:
+      pci-db:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
 
   core-db:
     image: ${POSTGRES_IMAGE}

@@ -110,6 +110,22 @@ Seeds the PCI database with fake but realistic card records, including:
 ### `scripts/test-connectivity.sh`
 Runs a small set of network checks to confirm that expected paths are allowed and forbidden paths are blocked.
 
+### `services/pci-auth-svc/`
+Contains the first PCI-side application service.
+
+Current files:
+- `app.py`
+- `requirements.txt`
+- `Dockerfile`
+
+This service is intended to:
+- receive a card token and transaction details
+- look up the matching PCI-side card record
+- return an approval/decline result
+- log authorization outcomes
+
+The main Docker Compose file now uses this service code to power the `pci-svc` runtime role in the overall topology.
+
 ## Prerequisites
 
 Before running this project, make sure these work locally:
