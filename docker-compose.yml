@@ -19,11 +19,7 @@ services:
       context: ./services/corp-agent
     container_name: neobank-corp-agent
     environment:
-      CORE_DB_HOST: core-db
-      CORE_DB_PORT: "5432"
-      CORE_DB_NAME: ${CORE_DB_NAME}
-      CORE_DB_USER: ${CORE_DB_USER}
-      CORE_DB_PASSWORD: ${CORE_DB_PASSWORD}
+      CORE_SERVICE_BASE_URL: http://core-svc:8000
       SUPPORT_AGENT_MODE: ${SUPPORT_AGENT_MODE:-mock}
       SUPPORT_AGENT_MODEL: ${SUPPORT_AGENT_MODEL:-gpt-4o-mini}
       SUPPORT_AGENT_BASE_URL: ${SUPPORT_AGENT_BASE_URL:-https://api.openai.com/v1}
@@ -31,10 +27,9 @@ services:
     networks:
       - corp-net
       - core-net
-      - core-db-net
     depends_on:
-      core-db:
-        condition: service_healthy
+      core-svc:
+        condition: service_started
     ports:
       - "8003:8000"
 

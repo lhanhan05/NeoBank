@@ -40,7 +40,7 @@ CREATE TABLE support_tickets (
     customer_id uuid REFERENCES customers(id) ON DELETE SET NULL,
     subject text NOT NULL,
     body text NOT NULL,
-    status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed', 'escalated')),
+    status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed', 'escalated', 'resolved')),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );

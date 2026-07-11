@@ -85,6 +85,7 @@ This schema supports:
 - untrusted support text
 - operator notes
 - before/after audit evidence
+- both conservative and exploit-path ticket outcomes, including `resolved`
 
 ### `db/core/init/002_seed.sql`
 Seeds the Core database with fake but realistic banking data, including:
@@ -126,21 +127,45 @@ Runs endpoint-level checks for the Core service:
 - frozen-account decline
 - missing-account decline
 
+### `scripts/test-core-support-endpoints.sh`
+Runs endpoint-level checks for the Core service's internal support endpoints:
+- internal ticket listing
+- internal ticket review context
+- internal account-note retrieval
+- internal credit action
+- safe/unsafe support-path boundary validation at the Core API layer
+
+### `scripts/test-corporate-service.sh`
+Runs endpoint-level smoke checks for the Corporate support service:
+- health check
+- list tickets
+- fetch known seeded malicious ticket
+- review the malicious ticket through Core-owned support context
+- conservative resolve path that escalates suspicious tickets
+- configurable agent-review path
+- privileged support actions routed through Core
+- verify missing-ticket 404 behavior
+
+### `scripts/reset-exploit-state.sh`
+Resets the canonical seeded exploit target through Core-owned test/reset endpoints:
+- fetch the canonical seeded exploit baseline
+- parse the baseline dynamically instead of embedding literal ticket/account values in the shell script
+- restore ticket/account state from the canonical seeded baseline definition
+- cleanup of prior exploit-generated credit rows through the Core-owned combined reset path
+
+### `scripts/test-agent-exploit.sh`
+Runs the dedicated exploit workflow from a clean preconditioned state:
+- reset exploit target state
+- confirm exploit preconditions
+- run `agent-review`
+- run unsafe `agent-resolve`
+- verify ticket resolution, account mutation, balance delta, and exploit transaction evidence
+
 ### `scripts/test-dmz-gateway.sh`
 Runs endpoint-level checks for the DMZ gateway:
 - health check
 - approved public-edge payment flow
 - public-edge decline paths for expired card, frozen account, and missing account
-
-### `scripts/test-corporate-service.sh`
-Runs endpoint-level checks for the Corporate support service:
-- health check
-- list tickets
-- fetch known seeded malicious ticket
-- verify missing-ticket 404 behavior
-
-### `services/pci-auth-svc/`
-Contains the first PCI-side application service.
 
 Current files:
 - `app.py`
@@ -168,6 +193,7 @@ This service is intended to:
 - look up Core account state
 - call the PCI service
 - write approved transaction rows into the Core database
+- own the internal support API surface used by the Corporate service for tickets, account data, notes, privileged support actions, and exploit reset/baseline endpoints
 
 The main Docker Compose file now uses this service code to power the `core-svc` runtime role in the overall topology.
 
@@ -195,15 +221,17 @@ Current files:
 - `Dockerfile`
 
 This first version is intentionally read-focused at its core and is intended to:
-- expose support tickets from the Core database
-- expose account state and transaction history for support review
+- expose support tickets through the Core service
+- expose account state and transaction history for support review through the Core service
 - provide a ticket-review workflow that assembles context and flags risk
 - provide a conservative ticket-resolution workflow that currently escalates rather than auto-acting
 - provide a configurable support-agent review surface in mock or OpenAI-compatible LLM mode
 - provide an unsafe agent-resolve path for the exploit scenario
-- support the first privileged actions: freeze, unfreeze, and credit
+- include account notes in the exploit context
+- support the first privileged actions: freeze, unfreeze, and credit through the Core service boundary
 - prove the Corporate -> Core data path works
-- prepare the ground for later support tools and agent behavior
+- support a repeatable exploit-precondition reset and dedicated exploit validation path before the final exploitation write-up
+- prepare the ground for later support tools, exploitation evidence, and the distinguishing feature
 
 The main Docker Compose file now uses this service code to power the `corp-agent` runtime role in the overall topology.
 
@@ -289,7 +317,9 @@ The current stack has been validated with:
 - live PCI authorization checks through `pci-svc`
 - live Core-to-PCI payment flow through `core-svc`
 - live DMZ-to-Core-to-PCI payment flow through `dmz-gw`
-- live Corporate support reads and actions through `corp-agent`
+- live Core internal support API checks through `./scripts/test-core-support-endpoints.sh`
+- live Corporate support workflow smoke checks through `./scripts/test-corporate-service.sh`
+- live exploit workflow checks through `./scripts/test-agent-exploit.sh`
 
 ## Next development areas
 
