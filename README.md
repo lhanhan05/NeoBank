@@ -194,8 +194,10 @@ Current files:
 - `requirements.txt`
 - `Dockerfile`
 
-This first version is intentionally read-only and is intended to:
+This first version is intentionally read-focused at its core and is intended to:
 - expose support tickets from the Core database
+- expose account state and transaction history for support review
+- support the first privileged actions: freeze, unfreeze, and credit
 - prove the Corporate -> Core data path works
 - prepare the ground for later support tools and agent behavior
 
@@ -282,6 +284,7 @@ The current stack has been validated with:
 - live PCI authorization checks through `pci-svc`
 - live Core-to-PCI payment flow through `core-svc`
 - live DMZ-to-Core-to-PCI payment flow through `dmz-gw`
+- live Corporate support reads and actions through `corp-agent`
 
 ## Next development areas
 
