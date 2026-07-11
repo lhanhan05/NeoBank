@@ -24,6 +24,10 @@ services:
       CORE_DB_NAME: ${CORE_DB_NAME}
       CORE_DB_USER: ${CORE_DB_USER}
       CORE_DB_PASSWORD: ${CORE_DB_PASSWORD}
+      SUPPORT_AGENT_MODE: ${SUPPORT_AGENT_MODE:-mock}
+      SUPPORT_AGENT_MODEL: ${SUPPORT_AGENT_MODEL:-gpt-4o-mini}
+      SUPPORT_AGENT_BASE_URL: ${SUPPORT_AGENT_BASE_URL:-https://api.openai.com/v1}
+      SUPPORT_AGENT_API_KEY: ${SUPPORT_AGENT_API_KEY:-}
     networks:
       - corp-net
       - core-net

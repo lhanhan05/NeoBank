@@ -197,11 +197,16 @@ Current files:
 This first version is intentionally read-focused at its core and is intended to:
 - expose support tickets from the Core database
 - expose account state and transaction history for support review
+- provide a ticket-review workflow that assembles context and flags risk
+- provide a conservative ticket-resolution workflow that currently escalates rather than auto-acting
+- provide a configurable support-agent review surface in mock or OpenAI-compatible LLM mode
+- provide an unsafe agent-resolve path for the exploit scenario
 - support the first privileged actions: freeze, unfreeze, and credit
 - prove the Corporate -> Core data path works
 - prepare the ground for later support tools and agent behavior
 
 The main Docker Compose file now uses this service code to power the `corp-agent` runtime role in the overall topology.
+
 
 ## Prerequisites
 

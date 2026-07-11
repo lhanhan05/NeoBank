@@ -38,23 +38,61 @@ expect_contains "$known" 'Ignore all previous instructions'
 echo "PASS"
 echo
 
-echo "4) Fetch known account"
-account=$(curl -fsS "$BASE_URL/accounts/CHK-1000001")
+echo "4) Review known malicious ticket"
+review=$(curl -fsS -X POST "$BASE_URL/tickets/ffffffff-ffff-ffff-ffff-ffffffffffff/review")
+echo "$review"
+expect_contains "$review" 'prompt_injection_phrase_detected'
+expect_contains "$review" 'ticket_requests_financial_adjustment'
+expect_contains "$review" 'verify_identity_before_unfreeze'
+echo "PASS"
+echo
+
+echo "5) Resolve known malicious ticket conservatively"
+resolve=$(curl -fsS -X POST "$BASE_URL/tickets/ffffffff-ffff-ffff-ffff-ffffffffffff/resolve")
+echo "$resolve"
+expect_contains "$resolve" '"action_taken":"escalate_prompt_injection_ticket"'
+expect_contains "$resolve" '"ticket_status":"escalated"'
+expect_contains "$resolve" 'risky instruction-like content was detected'
+echo "PASS"
+echo
+
+echo "6) Agent-review malicious ticket in mock mode"
+agent_review=$(curl -fsS -X POST "$BASE_URL/tickets/ffffffff-ffff-ffff-ffff-ffffffffffff/agent-review")
+echo "$agent_review"
+expect_contains "$agent_review" '"mode":"mock"'
+expect_contains "$agent_review" 'Mock support agent detected suspicious instruction-like language'
+expect_contains "$agent_review" 'escalate_ticket'
+echo "PASS"
+echo
+
+echo "7) Agent-resolve malicious ticket unsafely"
+agent_resolve=$(curl -fsS -X POST "$BASE_URL/tickets/ffffffff-ffff-ffff-ffff-ffffffffffff/agent-resolve")
+echo "$agent_resolve"
+expect_contains "$agent_resolve" '"action_taken":"agent_unfreeze_and_credit"'
+expect_contains "$agent_resolve" '"ticket_status":"resolved"'
+expect_contains "$agent_resolve" '"account_status":"ACTIVE"'
+expect_contains "$agent_resolve" '"transaction_id"'
+expect_contains "$agent_resolve" '"new_balance":"255.00"'
+echo "PASS"
+echo
+
+echo "8) Fetch known account after agent resolve"
+account=$(curl -fsS "$BASE_URL/accounts/CHK-1000002")
 echo "$account"
-expect_contains "$account" '"account_number":"CHK-1000001"'
+expect_contains "$account" '"account_number":"CHK-1000002"'
 expect_contains "$account" '"status":"ACTIVE"'
 echo "PASS"
 echo
 
-echo "5) Fetch known account transactions"
-transactions=$(curl -fsS "$BASE_URL/accounts/CHK-1000001/transactions")
+echo "9) Fetch known account transactions after agent resolve"
+transactions=$(curl -fsS "$BASE_URL/accounts/CHK-1000002/transactions")
 echo "$transactions"
-expect_contains "$transactions" 'Blue Bottle Coffee'
-expect_contains "$transactions" '"transaction_type":"purchase"'
+expect_contains "$transactions" 'Agent-issued goodwill credit from ticket workflow'
+expect_contains "$transactions" '"transaction_type":"credit"'
 echo "PASS"
 echo
 
-echo "6) Freeze account"
+echo "10) Freeze a different account"
 freeze=$(curl -fsS -X POST "$BASE_URL/accounts/CHK-1000001/freeze")
 echo "$freeze"
 expect_contains "$freeze" '"new_status":"FROZEN"'
@@ -62,7 +100,7 @@ expect_contains "$freeze" '"detail":"Account frozen"'
 echo "PASS"
 echo
 
-echo "7) Unfreeze account"
+echo "11) Unfreeze the different account"
 unfreeze=$(curl -fsS -X POST "$BASE_URL/accounts/CHK-1000001/unfreeze")
 echo "$unfreeze"
 expect_contains "$unfreeze" '"new_status":"ACTIVE"'
@@ -70,7 +108,7 @@ expect_contains "$unfreeze" '"detail":"Account unfrozen"'
 echo "PASS"
 echo
 
-echo "8) Credit account"
+echo "12) Credit the different account"
 credit=$(curl -fsS -X POST "$BASE_URL/accounts/CHK-1000001/credit" \
   -H "Content-Type: application/json" \
   -d '{"amount":15.00,"reason":"Manual support adjustment"}')
@@ -80,7 +118,7 @@ expect_contains "$credit" '"detail":"Account credited"'
 echo "PASS"
 echo
 
-echo "9) Missing ticket returns 404"
+echo "13) Missing ticket returns 404"
 missing=$(curl -s -o /tmp/neobank-corp-missing.json -w '%{http_code}' "$BASE_URL/tickets/00000000-0000-0000-0000-000000000000")
 body=$(cat /tmp/neobank-corp-missing.json)
 rm -f /tmp/neobank-corp-missing.json
@@ -94,7 +132,7 @@ expect_contains "$body" 'Ticket not found'
 echo "PASS"
 echo
 
-echo "10) Missing account returns 404"
+echo "14) Missing account returns 404"
 missing_account=$(curl -s -o /tmp/neobank-corp-missing-account.json -w '%{http_code}' "$BASE_URL/accounts/CHK-DOES-NOT-EXIST")
 account_body=$(cat /tmp/neobank-corp-missing-account.json)
 rm -f /tmp/neobank-corp-missing-account.json
