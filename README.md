@@ -1,78 +1,95 @@
 # NeoBank
 
-NeoBank is a small segmented banking cyber range built with Docker networks, microservice-style containers, isolated PostgreSQL databases, and an eventual AI customer-support surface for security testing.
+NeoBank is a segmented banking cyber range built with Docker networks, FastAPI services, and isolated PostgreSQL databases. It models a small bank split across DMZ, Corporate, Core, and PCI zones, then demonstrates a support-agent exploit path that passes through a real approval / policy decision layer before reaching an intentionally unsafe execution path.
 
-## What this repository currently contains
+## Repository contents
 
-This repository currently provides:
-- a segmented Docker topology
-- two isolated PostgreSQL containers
-- service-to-service network controls
-- a connectivity test script that proves key allowed and blocked paths
-- an integrated support action policy / approval classification layer inside the Corporate -> Core support workflow
+This repository includes:
+- all source code
+- Dockerfiles
+- `docker-compose.yml`
+- Core and PCI database schema files
+- base seed files and idempotent demo-expansion seed files
+- segmentation and smoke-test scripts
+- exploit reset and replay scripts
+- `solution.json`
+- `NOTES.md`
 
-## Topology
+## Architecture
 
-NeoBank is modeled as separate network zones:
+### Zones
 - DMZ
 - Corporate
-- Core Banking
-- PCI / card-data environment
-- database subnets owned by Core and PCI separately
+- Core
+- PCI
+- Core database subnet
+- PCI database subnet
 
-Current service layout:
+### Services
 - `dmz-gw`
-  - attached to `dmz-net` and `core-net`
+  - public gateway for payment traffic
 - `corp-agent`
-  - attached to `corp-net` and `core-net`
+  - internal support workflow service
 - `core-svc`
-  - attached to `core-net`, `pci-net`, and `core-db-net`
+  - Core business logic and internal support API owner
 - `pci-svc`
-  - attached to `pci-net` and `pci-db-net`
+  - PCI authorization service
 - `core-db`
-  - attached only to `core-db-net`
+  - Core business data
 - `pci-db`
-  - attached only to `pci-db-net`
+  - PCI card and authorization data
 
-This means:
-- Corporate can reach Core
-- Core can reach PCI
-- Core can reach only the Core database
-- PCI can reach only the PCI database
-- DMZ cannot reach PCI directly
-- Corporate cannot reach PCI directly
+### Allowed paths
+- `dmz-gw -> core-svc`
+- `corp-agent -> core-svc`
+- `core-svc -> pci-svc`
+- `core-svc -> core-db`
+- `pci-svc -> pci-db`
 
-## Repository files
+### Blocked paths
+- `dmz-gw -> pci-svc`
+- `corp-agent -> pci-svc`
+- `dmz-gw -> core-db`
+- `dmz-gw -> pci-db`
+- `corp-agent -> core-db`
+- `corp-agent -> pci-db`
+- `core-svc -> pci-db`
+- `pci-svc -> core-db`
 
-### `.env`
-Stores Docker Compose configuration values for:
-- network names
-- image names
-- local development database settings
+## Core idea
 
-Key values include:
-- `PROBE_IMAGE`
-- `POSTGRES_IMAGE`
-- `DMZ_NET`, `CORP_NET`, `CORE_NET`, `PCI_NET`
-- `CORE_DB_NET`, `PCI_DB_NET`
-- `CORE_DB_NAME`, `CORE_DB_USER`, `CORE_DB_PASSWORD`
-- `PCI_DB_NAME`, `PCI_DB_USER`, `PCI_DB_PASSWORD`
+The project has two main runtime stories:
 
-### `.gitignore`
-Prevents local-only files from being committed, including:
-- `.env`
-- Python cache files
+1. Normal banking/payment flow
+- public request enters through `dmz-gw`
+- `dmz-gw` forwards to `core-svc`
+- `core-svc` loads Core account state
+- `core-svc` calls `pci-svc` using the account token
+- `pci-svc` checks PCI-side card state and logs the decision
+- `core-svc` writes an approved Core-side transaction on success
 
-### `docker-compose.yml`
-Defines:
-- all services
-- all Docker networks
-- both PostgreSQL containers
-- persistent Docker volumes for database storage
-- the Core database initialization mount at `/docker-entrypoint-initdb.d`
+2. Support-agent exploit flow
+- a malicious support ticket is read through `corp-agent`
+- `corp-agent` asks `core-svc` for review context
+- the workflow classifies the requested actions through an embedded approval / policy layer
+- the unsafe `agent-resolve` path still performs privileged actions even though the policy result says approval is required and auto-execution should not happen
 
-### `db/core/init/001_schema.sql`
-Defines the Core database tables:
+## Distinguishing feature
+
+The distinguishing feature is an embedded support action policy / approval classification layer inside the support workflow.
+
+Before sensitive support actions are executed, the workflow classifies:
+- whether the requested action is informational or privileged
+- whether approval is required
+- whether automatic execution is allowed
+- whether the request should be escalated manually
+
+This makes the exploit path stronger because the attack does not just influence an agent response. It passes through a real workflow control point that correctly flags the request as unsafe, while the intentionally unsafe execution path still proceeds.
+
+## Data layout
+
+### Core database tables
+Defined in `db/core/init/001_schema.sql`:
 - `customers`
 - `accounts`
 - `transactions`
@@ -80,285 +97,161 @@ Defines the Core database tables:
 - `account_notes`
 - `audit_log`
 
-This schema supports:
-- customer/account state
-- transaction history
-- untrusted support text
-- operator notes
-- before/after audit evidence
-- both conservative and exploit-path ticket outcomes, including `resolved`
-
-### `db/core/init/002_seed.sql`
-Seeds the base Core database with fake but realistic banking data, including:
-- active, frozen, and low-balance accounts
-- support tickets
-- account notes
-- an example prompt-injection-style ticket body
-
-### `db/core/init/003_seed_expansion.sql`
-Applies non-destructive idempotent Core-side demo realism expansion data to an already-running local database using `ON CONFLICT (id) DO NOTHING`.
-
-Adds:
-- two extra customers/accounts
-- additional transaction history
-- benign, operational, and approval-required support tickets
-- comparison account-note patterns for reviewer demos
-
-### `db/pci/init/001_schema.sql`
-Defines the PCI-side tables:
+### PCI database tables
+Defined in `db/pci/init/001_schema.sql`:
 - `cards`
 - `authorization_log`
 
-This schema keeps sensitive card data isolated from the Core system while still supporting token-based authorization checks.
+## Seed strategy
 
-### `db/pci/init/002_seed.sql`
-Seeds the base PCI database with fake but realistic card records, including:
-- an active card
-- an expired card
-- a frozen card
-- sample authorization outcomes for each
+### Base seed
+- `db/core/init/002_seed.sql`
+- `db/pci/init/002_seed.sql`
 
-### `db/pci/init/003_seed_expansion.sql`
-Applies non-destructive idempotent PCI-side demo realism expansion data to an already-running local database using `ON CONFLICT (id) DO NOTHING`.
+These provide the canonical bootstrap rows used by the system.
 
-Adds:
-- two extra active cards aligned to the Maria/Ethan Core-side demo accounts
-- extra approved authorization history for reviewer-friendly comparison cases
+### Demo expansion seed
+- `db/core/init/003_seed_expansion.sql`
+- `db/pci/init/003_seed_expansion.sql`
 
-### `scripts/test-connectivity.sh`
-Runs a small set of network checks to confirm that expected paths are allowed and forbidden paths are blocked.
+These add richer demo cases non-destructively with `ON CONFLICT (id) DO NOTHING`.
 
-Current checks hit live health endpoints rather than assuming port 80:
-- `corp-agent` -> `core-svc` health is allowed
-- `core-svc` -> `pci-svc` health is allowed
-- `corp-agent` -> `pci-svc` health is blocked
-- `dmz-gw` -> `pci-svc` health is blocked
+The expansion rows include:
+- additional customers and accounts
+- additional transaction history
+- benign support cases
+- approval-required but non-injection support cases
+- additional PCI-side card and authorization examples
 
-### `scripts/test-pci-service.sh`
-Runs endpoint-level checks for the PCI authorization service:
-- health check
-- active card approval
-- expired card decline
-- frozen card decline
-- unknown token decline
+## Configuration
 
-### `scripts/test-core-service.sh`
-Runs endpoint-level checks for the Core service:
-- health check
-- approved Core -> PCI payment flow
-- expired-card decline
-- frozen-account decline before PCI call
-- missing-account decline
+Local configuration lives in `.env`.
 
-The Core -> PCI contract now uses the PCI request field name `token`, which fixes the earlier local 422 failure.
+Important variables include:
+- `CORE_DB_NAME`
+- `CORE_DB_USER`
+- `CORE_DB_PASSWORD`
+- `PCI_DB_NAME`
+- `PCI_DB_USER`
+- `PCI_DB_PASSWORD`
+- `SUPPORT_AGENT_MODE`
+- `SUPPORT_AGENT_MODEL`
+- `SUPPORT_AGENT_BASE_URL`
+- `SUPPORT_AGENT_API_KEY`
 
-### `scripts/test-core-support-endpoints.sh`
-Runs endpoint-level checks for the Core service's internal support endpoints:
-- internal ticket listing
-- internal ticket review context
-- internal account-note retrieval
-- internal credit action
-- safe/unsafe support-path boundary validation at the Core API layer
+The support workflow runs in `mock` mode by default. Optional OpenAI-compatible `llm` mode can be enabled through the support-agent variables.
 
-### `scripts/test-corporate-service.sh`
-Runs endpoint-level smoke checks for the Corporate support service:
-- health check
-- list tickets
-- fetch known seeded malicious ticket
-- review the malicious ticket through Core-owned support context
-- conservative resolve path that escalates suspicious tickets
-- configurable agent-review path
-- integrated policy/approval classification output checks
-- privileged support actions routed through Core
-- verify missing-ticket 404 behavior
+## Run instructions
 
-### `scripts/reset-exploit-state.sh`
-Resets the canonical seeded exploit target through Core-owned test/reset endpoints:
-- fetch the canonical seeded exploit baseline
-- parse the baseline dynamically instead of embedding literal ticket/account values in the shell script
-- restore ticket/account state from the canonical seeded baseline definition
-- cleanup of prior exploit-generated credit rows through the Core-owned combined reset path
-
-### `scripts/test-agent-exploit.sh`
-Runs the dedicated exploit workflow from a clean preconditioned state:
-- reset exploit target state
-- fetch the canonical exploit baseline dynamically from Core
-- confirm exploit preconditions
-- run `agent-review`
-- verify the integrated policy/approval layer marks the requested actions as approval-required and not safe for auto-execution
-- run unsafe `agent-resolve`
-- verify ticket resolution, account mutation, balance delta, and exploit transaction evidence
-
-### `scripts/test-dmz-gateway.sh`
-Runs endpoint-level checks for the DMZ gateway:
-- health check
-- approved public-edge payment flow
-- public-edge decline paths for expired card, frozen account before PCI call, and missing account
-
-### `services/pci-auth-svc/`
-Contains the first PCI-side application service.
-
-Current files:
-- `app.py`
-- `requirements.txt`
-- `Dockerfile`
-
-This service is intended to:
-- receive a card token and transaction details
-- look up the matching PCI-side card record
-- return an approval/decline result
-- log authorization outcomes
-
-The main Docker Compose file now uses this service code to power the `pci-svc` runtime role in the overall topology.
-
-### `services/core-svc/`
-Contains the first Core-side application service.
-
-Current files:
-- `app.py`
-- `requirements.txt`
-- `Dockerfile`
-
-This service is intended to:
-- receive an account-based payment authorization request
-- look up Core account state
-- call the PCI service
-- write approved transaction rows into the Core database
-- own the internal support API surface used by the Corporate service for tickets, account data, notes, privileged support actions, and exploit reset/baseline endpoints
-- accept either `PCI_AUTH_BASE_URL` or `PCI_SERVICE_URL` for the Core -> PCI service URL to keep Compose wiring and code-level configuration aligned
-
-The main Docker Compose file now uses this service code to power the `core-svc` runtime role in the overall topology.
-
-### `services/dmz-gw/`
-Contains the first DMZ gateway implementation.
-
-Current files:
-- `app.py`
-- `requirements.txt`
-- `Dockerfile`
-
-This service is intended to:
-- expose the public payment endpoint
-- forward allowed requests into `core-svc`
-- stay thin and avoid holding business logic directly
-
-The main Docker Compose file now uses this service code to power the `dmz-gw` runtime role in the overall topology.
-
-### `services/corp-agent/`
-Contains the first Corporate-zone support service.
-
-Current files:
-- `app.py`
-- `requirements.txt`
-- `Dockerfile`
-
-This first version is intentionally read-focused at its core and is intended to:
-- expose support tickets through the Core service
-- expose account state and transaction history for support review through the Core service
-- provide a ticket-review workflow that assembles context and flags risk
-- provide a conservative ticket-resolution workflow that currently escalates rather than auto-acting
-- provide a configurable support-agent review surface in mock or OpenAI-compatible LLM mode
-- provide an integrated support action policy / approval classification layer before privileged actions
-- provide an unsafe agent-resolve path for the exploit scenario
-- include account notes in the exploit context
-- support the first privileged actions: freeze, unfreeze, and credit through the Core service boundary
-- prove the Corporate -> Core data path works
-- support a repeatable exploit-precondition reset and dedicated exploit validation path before the final exploitation write-up
-- prepare the ground for later support tools, exploitation evidence, and the distinguishing feature
-
-The main Docker Compose file now uses this service code to power the `corp-agent` runtime role in the overall topology.
-
-
-## Prerequisites
-
-Before running this project, make sure these work locally:
-
+### 1. Validate Docker/Compose
 ```bash
 docker --version
 docker compose version
 docker ps
 ```
 
-Required software:
-- Docker Desktop
-- Docker Engine
-- Docker Compose v2
-- Git
-
-## How to validate the Compose file
-
+### 2. Validate the compose file
 ```bash
 cd "/Users/lukehan/Desktop/Neobank"
 docker compose config
 ```
 
-This confirms Docker Compose can parse and resolve the configuration.
-
-## How to start the stack
-
+### 3. Start the stack
 ```bash
 cd "/Users/lukehan/Desktop/Neobank"
 docker compose up -d
 docker compose ps
 ```
 
-What success looks like:
-- all six services show `Up`
-- `core-db` and `pci-db` show as starting or healthy
+Expected result:
+- all services are up
+- `core-db` and `pci-db` are healthy
 
-## Connectivity checks
+## Validation scripts
 
-Run:
-
+### Segmentation check
 ```bash
 cd "/Users/lukehan/Desktop/Neobank"
 ./scripts/test-connectivity.sh
 ```
 
-What this script currently verifies:
-- allowed:
-  - `corp-agent -> core-svc`
-  - `core-svc -> pci-svc`
-- blocked:
-  - `corp-agent -> pci-svc`
-  - `dmz-gw -> pci-svc`
+This verifies:
+- `corp-agent -> core-svc` allowed
+- `core-svc -> pci-svc` allowed
+- `corp-agent -> pci-svc` blocked
+- `dmz-gw -> pci-svc` blocked
 
-What success looks like:
-- each check prints `PASS`
-- final line prints `All connectivity checks passed.`
+### Smoke tests
 
-## Database isolation
+PCI service:
+```bash
+./scripts/test-pci-service.sh
+```
 
-The current database layout is intentionally stricter than a shared database subnet.
+Core payment path:
+```bash
+./scripts/test-core-service.sh
+```
 
-- `core-db` is reachable only from services on `core-db-net`
-- `pci-db` is reachable only from services on `pci-db-net`
-- `core-svc` can reach `core-db` but not `pci-db`
-- `pci-svc` can reach `pci-db` but not `core-db`
+DMZ payment path:
+```bash
+./scripts/test-dmz-gateway.sh
+```
 
-This keeps database access aligned with service ownership.
+Core internal support APIs:
+```bash
+./scripts/test-core-support-endpoints.sh
+```
 
-## Current runtime behavior
+Corporate support workflow:
+```bash
+./scripts/test-corporate-service.sh
+```
 
-The current stack has been validated with:
-- `docker compose config`
-- `docker compose up -d`
-- `docker compose ps`
-- `./scripts/test-connectivity.sh`
-- direct database reachability checks from the intended service containers
-- direct verification that both databases loaded their schema and seed rows successfully
-- live PCI authorization checks through `pci-svc`
-- live Core-to-PCI payment flow through `core-svc`
-- live DMZ-to-Core-to-PCI payment flow through `dmz-gw`
-- live Core internal support API checks through `./scripts/test-core-support-endpoints.sh`
-- live Corporate support workflow smoke checks through `./scripts/test-corporate-service.sh`
-- live exploit workflow checks through `./scripts/test-agent-exploit.sh`
+## Exploit reset and replay
 
-## Next development areas
+Reset the canonical exploit target:
+```bash
+./scripts/reset-exploit-state.sh
+```
 
-The next likely additions are:
-- database schema files
-- seed data
-- transaction flow logic
-- support-agent tools and rules
-- attack-chain documentation and evidence
+Run the exploit demonstration:
+```bash
+./scripts/test-agent-exploit.sh
+```
+
+This demonstrates:
+- baseline reset to a known seeded state
+- policy classification of the malicious request as approval-required and unsafe for auto-execution
+- unsafe support execution that still unfreezes the account and issues a credit
+- resulting ticket, account, transaction, and audit evidence changes
+
+## Important implementation notes
+
+- `corp-agent` does not talk directly to `core-db`
+- `core-svc` owns Core-side support reads and mutations
+- `core-svc` calls `pci-svc` using the PCI request field `token`
+- `pci-svc` is the only service that talks to `pci-db`
+- exploit reset is backend-owned and repeatable through Core-owned reset endpoints
+
+## Submission artifacts
+
+This repository contains the required submission-facing artifacts:
+- source code, Dockerfiles, compose file, and DB files
+- segmentation check and smoke tests
+- exploit/reset scripts
+- `solution.json`
+- `NOTES.md`
+
+## Main files
+
+- `docker-compose.yml`
+- `services/core-svc/app.py`
+- `services/corp-agent/app.py`
+- `services/pci-auth-svc/app.py`
+- `services/dmz-gw/app.py`
+- `scripts/test-connectivity.sh`
+- `scripts/test-agent-exploit.sh`
+- `scripts/reset-exploit-state.sh`
+- `solution.json`
+- `NOTES.md`
