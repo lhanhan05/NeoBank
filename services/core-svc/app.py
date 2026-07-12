@@ -102,6 +102,16 @@ class TicketReviewResponse(BaseModel):
     recommended_actions: list[str]
 
 
+class SupportActionPolicyResponse(BaseModel):
+    policy_version: str
+    requested_actions: list[str]
+    action_risk_level: str
+    approval_required: bool
+    auto_execute_allowed: bool
+    policy_reasons: list[str]
+    recommended_path: str
+
+
 class TicketResolutionResponse(BaseModel):
     ticket_id: str
     action_taken: str
@@ -286,6 +296,60 @@ def build_risk_flags(ticket: dict, account: dict | None, account_notes: list[dic
     return risk_flags, deduped_actions
 
 
+def build_support_action_policy(review: TicketReviewResponse, requested_actions: list[str] | None = None) -> SupportActionPolicyResponse:
+    requested = list(dict.fromkeys(requested_actions or review.recommended_actions))
+    policy_reasons: list[str] = []
+    approval_required = False
+    auto_execute_allowed = True
+    action_risk_level = "informational"
+    recommended_path = "allow_auto_execution"
+
+    if any(action in requested for action in ["require_human_review_for_credit", "issue_credit"]):
+        action_risk_level = "privileged"
+        approval_required = True
+        policy_reasons.append("financial_adjustments_require_approval")
+
+    if any(action in requested for action in ["verify_identity_before_unfreeze", "unfreeze_account", "manual_unfreeze_review_required"]):
+        action_risk_level = "privileged"
+        approval_required = True
+        policy_reasons.append("account_state_changes_require_approval")
+
+    if "prompt_injection_phrase_detected" in review.risk_flags:
+        approval_required = True
+        auto_execute_allowed = False
+        policy_reasons.append("prompt_injection_signal_forces_manual_handling")
+
+    if "suspicious_internal_note_present" in review.risk_flags:
+        approval_required = True
+        auto_execute_allowed = False
+        policy_reasons.append("internal_override_note_cannot_reduce_approval_requirements")
+
+    if review.account and review.account.status == "FROZEN" and any(action in requested for action in ["unfreeze_account", "manual_unfreeze_review_required"]):
+        approval_required = True
+        policy_reasons.append("frozen_accounts_need_manual_unfreeze_approval")
+
+    if not policy_reasons and action_risk_level == "informational":
+        policy_reasons.append("no_privileged_action_requested")
+
+    if approval_required and not auto_execute_allowed:
+        recommended_path = "manual_escalation_required"
+    elif approval_required:
+        recommended_path = "approval_required_before_execution"
+
+    if action_risk_level == "informational" and requested == ["review_ticket_manually"]:
+        recommended_path = "manual_review_only"
+
+    return SupportActionPolicyResponse(
+        policy_version="support-action-policy-v1",
+        requested_actions=requested,
+        action_risk_level=action_risk_level,
+        approval_required=approval_required,
+        auto_execute_allowed=auto_execute_allowed,
+        policy_reasons=list(dict.fromkeys(policy_reasons)),
+        recommended_path=recommended_path,
+    )
+
+
 def build_ticket_review(conn: psycopg.Connection, ticket_id: str) -> TicketReviewResponse:
     row = conn.execute(
         """
@@ -410,7 +474,7 @@ def auth_payment(req: AuthPaymentRequest) -> AuthPaymentResponse:
             pci_response = client.post(
                 f"{PCI_SERVICE_URL}/authorize",
                 json={
-                    "card_token": account["card_token"],
+                    "token": account["card_token"],
                     "merchant": req.merchant,
                     "amount": str(req.amount),
                 },

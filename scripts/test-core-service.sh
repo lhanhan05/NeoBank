@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8002}"
+RESET_EXPLOIT_STATE="${RESET_EXPLOIT_STATE:-true}"
 
 expect_contains() {
   local response="$1"
@@ -14,6 +15,13 @@ expect_contains() {
 }
 
 echo "Testing Core service at $BASE_URL"
+
+if [[ "$RESET_EXPLOIT_STATE" == "true" ]]; then
+  echo "0) Reset exploit baseline so frozen-card coverage is deterministic"
+  ./scripts/reset-exploit-state.sh >/dev/null
+  echo "PASS"
+  echo
+fi
 
 echo "1) Health check"
 health=$(curl -fsS "$BASE_URL/health")
@@ -43,13 +51,14 @@ expect_contains "$expired" '"card_status":"EXPIRED"'
 echo "PASS"
 echo
 
-echo "4) Frozen account decline before PCI outcome"
+echo "4) Frozen account decline before PCI call"
 frozen=$(curl -fsS -X POST "$BASE_URL/api/v1/auth-payment" \
   -H "Content-Type: application/json" \
   -d '{"account_number":"CHK-1000003","merchant":"Electronics Depot","amount":199.99}')
 echo "$frozen"
 expect_contains "$frozen" '"approved":false'
 expect_contains "$frozen" '"account_status":"FROZEN"'
+expect_contains "$frozen" '"card_status":null'
 echo "PASS"
 echo
 
@@ -59,7 +68,7 @@ missing=$(curl -fsS -X POST "$BASE_URL/api/v1/auth-payment" \
   -d '{"account_number":"CHK-DOES-NOT-EXIST","merchant":"Unknown Merchant","amount":5.00}')
 echo "$missing"
 expect_contains "$missing" '"approved":false'
-expect_contains "$missing" 'account was not found'
+expect_contains "$missing" '"reason":"Account not found"'
 echo "PASS"
 echo
 

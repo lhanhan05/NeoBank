@@ -9,6 +9,7 @@ This repository currently provides:
 - two isolated PostgreSQL containers
 - service-to-service network controls
 - a connectivity test script that proves key allowed and blocked paths
+- an integrated support action policy / approval classification layer inside the Corporate -> Core support workflow
 
 ## Topology
 
@@ -88,11 +89,20 @@ This schema supports:
 - both conservative and exploit-path ticket outcomes, including `resolved`
 
 ### `db/core/init/002_seed.sql`
-Seeds the Core database with fake but realistic banking data, including:
+Seeds the base Core database with fake but realistic banking data, including:
 - active, frozen, and low-balance accounts
 - support tickets
 - account notes
 - an example prompt-injection-style ticket body
+
+### `db/core/init/003_seed_expansion.sql`
+Applies non-destructive idempotent Core-side demo realism expansion data to an already-running local database using `ON CONFLICT (id) DO NOTHING`.
+
+Adds:
+- two extra customers/accounts
+- additional transaction history
+- benign, operational, and approval-required support tickets
+- comparison account-note patterns for reviewer demos
 
 ### `db/pci/init/001_schema.sql`
 Defines the PCI-side tables:
@@ -102,14 +112,27 @@ Defines the PCI-side tables:
 This schema keeps sensitive card data isolated from the Core system while still supporting token-based authorization checks.
 
 ### `db/pci/init/002_seed.sql`
-Seeds the PCI database with fake but realistic card records, including:
+Seeds the base PCI database with fake but realistic card records, including:
 - an active card
 - an expired card
 - a frozen card
 - sample authorization outcomes for each
 
+### `db/pci/init/003_seed_expansion.sql`
+Applies non-destructive idempotent PCI-side demo realism expansion data to an already-running local database using `ON CONFLICT (id) DO NOTHING`.
+
+Adds:
+- two extra active cards aligned to the Maria/Ethan Core-side demo accounts
+- extra approved authorization history for reviewer-friendly comparison cases
+
 ### `scripts/test-connectivity.sh`
 Runs a small set of network checks to confirm that expected paths are allowed and forbidden paths are blocked.
+
+Current checks hit live health endpoints rather than assuming port 80:
+- `corp-agent` -> `core-svc` health is allowed
+- `core-svc` -> `pci-svc` health is allowed
+- `corp-agent` -> `pci-svc` health is blocked
+- `dmz-gw` -> `pci-svc` health is blocked
 
 ### `scripts/test-pci-service.sh`
 Runs endpoint-level checks for the PCI authorization service:
@@ -124,8 +147,10 @@ Runs endpoint-level checks for the Core service:
 - health check
 - approved Core -> PCI payment flow
 - expired-card decline
-- frozen-account decline
+- frozen-account decline before PCI call
 - missing-account decline
+
+The Core -> PCI contract now uses the PCI request field name `token`, which fixes the earlier local 422 failure.
 
 ### `scripts/test-core-support-endpoints.sh`
 Runs endpoint-level checks for the Core service's internal support endpoints:
@@ -143,6 +168,7 @@ Runs endpoint-level smoke checks for the Corporate support service:
 - review the malicious ticket through Core-owned support context
 - conservative resolve path that escalates suspicious tickets
 - configurable agent-review path
+- integrated policy/approval classification output checks
 - privileged support actions routed through Core
 - verify missing-ticket 404 behavior
 
@@ -159,6 +185,7 @@ Runs the dedicated exploit workflow from a clean preconditioned state:
 - fetch the canonical exploit baseline dynamically from Core
 - confirm exploit preconditions
 - run `agent-review`
+- verify the integrated policy/approval layer marks the requested actions as approval-required and not safe for auto-execution
 - run unsafe `agent-resolve`
 - verify ticket resolution, account mutation, balance delta, and exploit transaction evidence
 
@@ -166,7 +193,7 @@ Runs the dedicated exploit workflow from a clean preconditioned state:
 Runs endpoint-level checks for the DMZ gateway:
 - health check
 - approved public-edge payment flow
-- public-edge decline paths for expired card, frozen account, and missing account
+- public-edge decline paths for expired card, frozen account before PCI call, and missing account
 
 ### `services/pci-auth-svc/`
 Contains the first PCI-side application service.
@@ -231,6 +258,7 @@ This first version is intentionally read-focused at its core and is intended to:
 - provide a ticket-review workflow that assembles context and flags risk
 - provide a conservative ticket-resolution workflow that currently escalates rather than auto-acting
 - provide a configurable support-agent review surface in mock or OpenAI-compatible LLM mode
+- provide an integrated support action policy / approval classification layer before privileged actions
 - provide an unsafe agent-resolve path for the exploit scenario
 - include account notes in the exploit context
 - support the first privileged actions: freeze, unfreeze, and credit through the Core service boundary

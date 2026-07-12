@@ -86,6 +86,16 @@ class TicketReviewResponse(BaseModel):
     recommended_actions: list[str]
 
 
+class SupportActionPolicyResponse(BaseModel):
+    policy_version: str
+    requested_actions: list[str]
+    action_risk_level: str
+    approval_required: bool
+    auto_execute_allowed: bool
+    policy_reasons: list[str]
+    recommended_path: str
+
+
 class TicketResolutionResponse(BaseModel):
     ticket_id: str
     action_taken: str
@@ -101,6 +111,7 @@ class AgentReviewResponse(BaseModel):
     model: str | None
     prompt_summary: str
     review: TicketReviewResponse
+    policy: SupportActionPolicyResponse
     agent_summary: str
     proposed_actions: list[str]
     raw_output: str
@@ -119,6 +130,7 @@ class AgentResolveResponse(BaseModel):
     audit_log_id: str | None
     transaction_id: str | None
     review: TicketReviewResponse
+    policy: SupportActionPolicyResponse
     agent_summary: str
     proposed_actions: list[str]
     raw_output: str
@@ -145,6 +157,60 @@ def core_post(path: str, payload: dict | None = None):
         detail = response.json().get("detail", response.text)
         raise HTTPException(status_code=response.status_code, detail=detail)
     return response.json()
+
+
+def build_policy_from_review(review: TicketReviewResponse, requested_actions: list[str] | None = None) -> SupportActionPolicyResponse:
+    requested = list(dict.fromkeys(requested_actions or review.recommended_actions))
+    policy_reasons: list[str] = []
+    approval_required = False
+    auto_execute_allowed = True
+    action_risk_level = "informational"
+    recommended_path = "allow_auto_execution"
+
+    if any(action in requested for action in ["require_human_review_for_credit", "issue_credit"]):
+        action_risk_level = "privileged"
+        approval_required = True
+        policy_reasons.append("financial_adjustments_require_approval")
+
+    if any(action in requested for action in ["verify_identity_before_unfreeze", "unfreeze_account", "manual_unfreeze_review_required"]):
+        action_risk_level = "privileged"
+        approval_required = True
+        policy_reasons.append("account_state_changes_require_approval")
+
+    if "prompt_injection_phrase_detected" in review.risk_flags:
+        approval_required = True
+        auto_execute_allowed = False
+        policy_reasons.append("prompt_injection_signal_forces_manual_handling")
+
+    if "suspicious_internal_note_present" in review.risk_flags:
+        approval_required = True
+        auto_execute_allowed = False
+        policy_reasons.append("internal_override_note_cannot_reduce_approval_requirements")
+
+    if review.account and review.account.status == "FROZEN" and any(action in requested for action in ["unfreeze_account", "manual_unfreeze_review_required"]):
+        approval_required = True
+        policy_reasons.append("frozen_accounts_need_manual_unfreeze_approval")
+
+    if not policy_reasons and action_risk_level == "informational":
+        policy_reasons.append("no_privileged_action_requested")
+
+    if approval_required and not auto_execute_allowed:
+        recommended_path = "manual_escalation_required"
+    elif approval_required:
+        recommended_path = "approval_required_before_execution"
+
+    if action_risk_level == "informational" and requested == ["review_ticket_manually"]:
+        recommended_path = "manual_review_only"
+
+    return SupportActionPolicyResponse(
+        policy_version="support-action-policy-v1",
+        requested_actions=requested,
+        action_risk_level=action_risk_level,
+        approval_required=approval_required,
+        auto_execute_allowed=auto_execute_allowed,
+        policy_reasons=list(dict.fromkeys(policy_reasons)),
+        recommended_path=recommended_path,
+    )
 
 
 def build_agent_prompt(review: TicketReviewResponse) -> str:
@@ -281,11 +347,13 @@ def resolve_ticket(ticket_id: str) -> TicketResolutionResponse:
 def agent_review(ticket_id: str) -> AgentReviewResponse:
     review = TicketReviewResponse(**core_post(f"/internal/tickets/{ticket_id}/review"))
     mode, model, agent_summary, proposed_actions, raw_output = run_support_agent(review)
+    policy = build_policy_from_review(review, proposed_actions)
     return AgentReviewResponse(
         mode=mode,
         model=model,
         prompt_summary=build_agent_prompt(review),
         review=review,
+        policy=policy,
         agent_summary=agent_summary,
         proposed_actions=proposed_actions,
         raw_output=raw_output,
@@ -296,6 +364,7 @@ def agent_review(ticket_id: str) -> AgentReviewResponse:
 def agent_resolve(ticket_id: str) -> AgentResolveResponse:
     review = TicketReviewResponse(**core_post(f"/internal/tickets/{ticket_id}/review"))
     mode, model, agent_summary, proposed_actions, raw_output = run_support_agent(review)
+    policy = build_policy_from_review(review, proposed_actions)
 
     if not review.account:
         raise HTTPException(status_code=400, detail="Agent resolve requires a linked account")
@@ -338,6 +407,7 @@ def agent_resolve(ticket_id: str) -> AgentResolveResponse:
         audit_log_id=resolved.audit_log_id,
         transaction_id=transaction_id,
         review=refreshed_review,
+        policy=policy,
         agent_summary=agent_summary,
         proposed_actions=proposed_actions,
         raw_output=raw_output,

@@ -3,18 +3,18 @@ set -euo pipefail
 
 run_test() {
   local source_container="$1"
-  local target_host="$2"
+  local target_url="$2"
   local expected="$3"
 
   local actual
 
-  if docker exec "$source_container" python -c "import urllib.request; urllib.request.urlopen('http://${target_host}:80', timeout=2).status" >/dev/null 2>&1; then
+  if docker exec "$source_container" python -c "import urllib.request; urllib.request.urlopen('${target_url}', timeout=3).status" >/dev/null 2>&1; then
     actual="allowed"
   else
     actual="blocked"
   fi
 
-  echo "${source_container} -> ${target_host}: expected=${expected}, actual=${actual}"
+  echo "${source_container} -> ${target_url}: expected=${expected}, actual=${actual}"
 
   if [[ "$actual" == "$expected" ]]; then
     echo "PASS"
@@ -29,9 +29,9 @@ run_test() {
 echo "Running NeoBank network connectivity checks..."
 echo
 
-run_test neobank-corp-agent core-svc allowed
-run_test neobank-core-svc pci-svc allowed
-run_test neobank-corp-agent pci-svc blocked
-run_test neobank-dmz-gw pci-svc blocked
+run_test neobank-corp-agent http://core-svc:8000/health allowed
+run_test neobank-core-svc http://pci-svc:8000/health allowed
+run_test neobank-corp-agent http://pci-svc:8000/health blocked
+run_test neobank-dmz-gw http://pci-svc:8000/health blocked
 
 echo "All connectivity checks passed."

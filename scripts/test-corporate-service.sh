@@ -64,6 +64,10 @@ echo "$agent_review"
 expect_contains "$agent_review" '"mode":"mock"'
 expect_contains "$agent_review" 'Mock support agent detected suspicious instruction-like language'
 expect_contains "$agent_review" 'escalate_ticket'
+expect_contains "$agent_review" '"policy_version":"support-action-policy-v1"'
+expect_contains "$agent_review" '"approval_required":true'
+expect_contains "$agent_review" '"auto_execute_allowed":false'
+expect_contains "$agent_review" 'manual_escalation_required'
 echo "PASS"
 echo
 
