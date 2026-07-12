@@ -156,6 +156,7 @@ Resets the canonical seeded exploit target through Core-owned test/reset endpoin
 ### `scripts/test-agent-exploit.sh`
 Runs the dedicated exploit workflow from a clean preconditioned state:
 - reset exploit target state
+- fetch the canonical exploit baseline dynamically from Core
 - confirm exploit preconditions
 - run `agent-review`
 - run unsafe `agent-resolve`
@@ -166,6 +167,9 @@ Runs endpoint-level checks for the DMZ gateway:
 - health check
 - approved public-edge payment flow
 - public-edge decline paths for expired card, frozen account, and missing account
+
+### `services/pci-auth-svc/`
+Contains the first PCI-side application service.
 
 Current files:
 - `app.py`
@@ -194,6 +198,7 @@ This service is intended to:
 - call the PCI service
 - write approved transaction rows into the Core database
 - own the internal support API surface used by the Corporate service for tickets, account data, notes, privileged support actions, and exploit reset/baseline endpoints
+- accept either `PCI_AUTH_BASE_URL` or `PCI_SERVICE_URL` for the Core -> PCI service URL to keep Compose wiring and code-level configuration aligned
 
 The main Docker Compose file now uses this service code to power the `core-svc` runtime role in the overall topology.
 

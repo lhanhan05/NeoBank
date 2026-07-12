@@ -168,7 +168,7 @@ CORE_DB_PORT = os.getenv("CORE_DB_PORT", "5432")
 CORE_DB_NAME = os.getenv("CORE_DB_NAME", "neobank_core")
 CORE_DB_USER = os.getenv("CORE_DB_USER", "core_user")
 CORE_DB_PASSWORD = os.getenv("CORE_DB_PASSWORD", "core_pass_dev")
-PCI_SERVICE_URL = os.getenv("PCI_SERVICE_URL", "http://pci-svc:8000")
+PCI_SERVICE_URL = os.getenv("PCI_AUTH_BASE_URL", os.getenv("PCI_SERVICE_URL", "http://pci-svc:8000"))
 
 SEEDED_EXPLOIT_TICKET_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 SEEDED_EXPLOIT_ACCOUNT_NUMBER = "CHK-1000003"
